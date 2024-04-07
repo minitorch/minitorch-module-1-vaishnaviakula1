@@ -23,7 +23,20 @@ def central_difference(f: Any, *vals: Any, arg: int = 0, epsilon: float = 1e-6) 
         An approximation of $f'_i(x_0, \ldots, x_{n-1})$
     """
     # TODO: Implement for Task 1.1.
-    raise NotImplementedError("Need to implement for Task 1.1")
+    vals_plus_epsilon = list(vals)
+    vals_plus_epsilon[arg] += epsilon
+
+    # Copy again for the negative epsilon step
+    vals_minus_epsilon = list(vals)
+    vals_minus_epsilon[arg] -= epsilon
+
+    # Compute f(x + epsilon) and f(x - epsilon)
+    f_plus = f(*vals_plus_epsilon)
+    f_minus = f(*vals_minus_epsilon)
+
+    # Return the central difference approximation of the derivative
+    return (f_plus - f_minus) / (2 * epsilon)
+    #raise NotImplementedError("Need to implement for Task 1.1")
 
 
 variable_count = 1
@@ -62,7 +75,19 @@ def topological_sort(variable: Variable) -> Iterable[Variable]:
         Non-constant Variables in topological order starting from the right.
     """
     # TODO: Implement for Task 1.4.
-    raise NotImplementedError("Need to implement for Task 1.4")
+    seen = set()
+    order = []
+
+    def recursive_helper(v: Variable):
+        if v not in seen:
+            seen.add(v)
+            for parent in v.parents:
+                recursive_helper(parent)
+            order.append(v)
+
+    recursive_helper(variable)
+    return order[::-1] 
+    #raise NotImplementedError("Need to implement for Task 1.4")
 
 
 def backpropagate(variable: Variable, deriv: Any) -> None:
@@ -77,7 +102,21 @@ def backpropagate(variable: Variable, deriv: Any) -> None:
     No return. Should write to its results to the derivative values of each leaf through `accumulate_derivative`.
     """
     # TODO: Implement for Task 1.4.
-    raise NotImplementedError("Need to implement for Task 1.4")
+    gradients = {v: 0 for v in topological_sort(variable)}
+
+    # Start with the gradient of the output variable
+    gradients[variable] = deriv
+
+    # Iterate over variables in topological order, skipping the output variable itself
+    for v in topological_sort(variable)[1:]:
+        for parent, grad in v.chain_rule(gradients[v]):
+            gradients[parent] += grad
+
+    # Accumulate the gradients in the leaf variables
+    for v in gradients:
+        if v.is_leaf():
+            v.accumulate_derivative(gradients[v])
+    #raise NotImplementedError("Need to implement for Task 1.4")
 
 
 @dataclass
