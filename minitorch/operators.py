@@ -125,6 +125,19 @@ class Scalar:
     def is_constant(self) -> bool:
         return self.history is None
 
+    def id(x: float) -> float:
+    """
+    Identity function that returns its input.
+
+    Args:
+        x (float): A floating point number.
+
+    Returns:
+        float: The input value itself.
+    """
+    return x
+
+
     @property
     def parents(self) -> Iterable[Variable]:
         assert self.history is not None
