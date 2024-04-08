@@ -1,185 +1,172 @@
-"""
-Collection of the core mathematical operators used throughout the code base.
-"""
+from __future__ import annotations
 
-import math
-from typing import Callable, Iterable
+from dataclasses import dataclass
+from typing import Any, Iterable, Optional, Sequence, Tuple, Type, Union
 
-# ## Task 0.1
-#
-# Implementation of a prelude of elementary functions.
+import numpy as np
 
+from .autodiff import Context, Variable, backpropagate, central_difference
+from .scalar_functions import (
+    EQ,
+    LT,
+    Add,
+    Exp,
+    Inv,
+    Log,
+    Mul,
+    Neg,
+    ReLU,
+    ScalarFunction,
+    Sigmoid,
+)
 
-def mul(x: float, y: float) -> float:
-    "$f(x, y) = x * y$"
-    raise NotImplementedError("Need to include this file from past assignment.")
+ScalarLike = Union[float, int, "Scalar"]
 
-
-def id(x: float) -> float:
-    "$f(x) = x$"
-    raise NotImplementedError("Need to include this file from past assignment.")
-
-
-def add(x: float, y: float) -> float:
-    "$f(x, y) = x + y$"
-    raise NotImplementedError("Need to include this file from past assignment.")
-
-
-def neg(x: float) -> float:
-    "$f(x) = -x$"
-    raise NotImplementedError("Need to include this file from past assignment.")
-
-
-def lt(x: float, y: float) -> float:
-    "$f(x) =$ 1.0 if x is less than y else 0.0"
-    raise NotImplementedError("Need to include this file from past assignment.")
-
-
-def eq(x: float, y: float) -> float:
-    "$f(x) =$ 1.0 if x is equal to y else 0.0"
-    raise NotImplementedError("Need to include this file from past assignment.")
-
-
-def max(x: float, y: float) -> float:
-    "$f(x) =$ x if x is greater than y else y"
-    raise NotImplementedError("Need to include this file from past assignment.")
-
-
-def is_close(x: float, y: float) -> float:
-    "$f(x) = |x - y| < 1e-2$"
-    raise NotImplementedError("Need to include this file from past assignment.")
-
-
-def sigmoid(x: float) -> float:
-    r"""
-    $f(x) =  \frac{1.0}{(1.0 + e^{-x})}$
-
-    (See https://en.wikipedia.org/wiki/Sigmoid_function )
-
-    Calculate as
-
-    $f(x) =  \frac{1.0}{(1.0 + e^{-x})}$ if x >=0 else $\frac{e^x}{(1.0 + e^{x})}$
-
-    for stability.
+@dataclass
+class ScalarHistory:
     """
-    raise NotImplementedError("Need to include this file from past assignment.")
+    `ScalarHistory` stores the history of `Function` operations that was
+    used to construct the current Variable.
 
-
-def relu(x: float) -> float:
+    Attributes:
+        last_fn : The last Function that was called.
+        ctx : The context for that Function.
+        inputs : The inputs that were given when `last_fn.forward` was called.
     """
-    $f(x) =$ x if x is greater than 0, else 0
+    last_fn: Optional[Type[ScalarFunction]] = None
+    ctx: Optional[Context] = None
+    inputs: Sequence[Scalar] = ()
 
-    (See https://en.wikipedia.org/wiki/Rectifier_(neural_networks) .)
+_var_count = 0
+
+class Scalar:
     """
-    raise NotImplementedError("Need to include this file from past assignment.")
-
-
-EPS = 1e-6
-
-
-def log(x: float) -> float:
-    "$f(x) = log(x)$"
-    return math.log(x + EPS)
-
-
-def exp(x: float) -> float:
-    "$f(x) = e^{x}$"
-    return math.exp(x)
-
-
-def log_back(x: float, d: float) -> float:
-    r"If $f = log$ as above, compute $d \times f'(x)$"
-    raise NotImplementedError("Need to include this file from past assignment.")
-
-
-def inv(x: float) -> float:
-    "$f(x) = 1/x$"
-    raise NotImplementedError("Need to include this file from past assignment.")
-
-
-def inv_back(x: float, d: float) -> float:
-    r"If $f(x) = 1/x$ compute $d \times f'(x)$"
-    raise NotImplementedError("Need to include this file from past assignment.")
-
-
-def relu_back(x: float, d: float) -> float:
-    r"If $f = relu$ compute $d \times f'(x)$"
-    raise NotImplementedError("Need to include this file from past assignment.")
-
-
-# ## Task 0.3
-
-# Small practice library of elementary higher-order functions.
-
-
-def map(fn: Callable[[float], float]) -> Callable[[Iterable[float]], Iterable[float]]:
+    A reimplementation of scalar values for autodifferentiation
+    tracking. Scalar Variables behave as close as possible to standard
+    Python numbers while also tracking the operations that led to the
+    number's creation. They can only be manipulated by
+    `ScalarFunction`.
     """
-    Higher-order map.
+    history: Optional[ScalarHistory]
+    derivative: Optional[float]
+    data: float
+    unique_id: int
+    name: str
 
-    See https://en.wikipedia.org/wiki/Map_(higher-order_function)
+    def __init__(self, v: float, back: ScalarHistory = ScalarHistory(), name: Optional[str] = None):
+        global _var_count
+        _var_count += 1
+        self.unique_id = _var_count
+        self.data = float(v)
+        self.history = back
+        self.derivative = None
+        if name is not None:
+            self.name = name
+        else:
+            self.name = str(self.unique_id)
+
+    def __repr__(self) -> str:
+        return "Scalar(%f)" % self.data
+
+    def __mul__(self, b: ScalarLike) -> Scalar:
+        return Mul.apply(self, b)
+
+    def __truediv__(self, b: ScalarLike) -> Scalar:
+        return Mul.apply(self, Inv.apply(b))
+
+    def __rtruediv__(self, b: ScalarLike) -> Scalar:
+        return Mul.apply(b, Inv.apply(self))
+
+    def __add__(self, b: ScalarLike) -> Scalar:
+        return Add.apply(self, b)
+
+    def __sub__(self, b: ScalarLike) -> Scalar:
+        return Add.apply(self, Neg.apply(b))
+
+    def __neg__(self) -> Scalar:
+        return Neg.apply(self)
+
+    def __lt__(self, b: ScalarLike) -> Scalar:
+        return LT.apply(self, b)
+
+    def __gt__(self, b: ScalarLike) -> Scalar:
+        return LT.apply(b, self)
+
+    def __eq__(self, b: ScalarLike) -> Scalar:
+        return EQ.apply(self, b)
+
+    def __radd__(self, b: ScalarLike) -> Scalar:
+        return self + b
+
+    def __rmul__(self, b: ScalarLike) -> Scalar:
+        return self * b
+
+    def log(self) -> Scalar:
+        return Log.apply(self)
+
+    def exp(self) -> Scalar:
+        return Exp.apply(self)
+
+    def sigmoid(self) -> Scalar:
+        return Sigmoid.apply(self)
+
+    def relu(self) -> Scalar:
+        return ReLU.apply(self)
+
+    def accumulate_derivative(self, x: Any) -> None:
+        assert self.is_leaf(), "Only leaf variables can have derivatives."
+        if self.derivative is None:
+            self.derivative = 0.0
+        self.derivative += x
+
+    def is_leaf(self) -> bool:
+        return self.history is not None and self.history.last_fn is None
+
+    def is_constant(self) -> bool:
+        return self.history is None
+
+    def id(x: float) -> float:
+    """
+    Identity function that returns its input.
 
     Args:
-        fn: Function from one value to one value.
+        x (float): A floating point number.
 
     Returns:
-        A function that takes a list, applies `fn` to each element, and returns a
-         new list
+        float: The input value itself.
     """
-    raise NotImplementedError("Need to include this file from past assignment.")
+    return x
 
 
-def negList(ls: Iterable[float]) -> Iterable[float]:
-    "Use `map` and `neg` to negate each element in `ls`"
-    raise NotImplementedError("Need to include this file from past assignment.")
+    @property
+    def parents(self) -> Iterable[Variable]:
+        assert self.history is not None
+        return self.history.inputs
 
+    def chain_rule(self, d_output: Any) -> Iterable[Tuple[Variable, Any]]:
+        if self.history is None or self.history.last_fn is None or self.history.ctx is None:
+            return
+        gradients = self.history.last_fn.backward(self.history.ctx, d_output)
+        return zip(self.history.inputs, gradients)
 
-def zipWith(
-    fn: Callable[[float, float], float]
-) -> Callable[[Iterable[float], Iterable[float]], Iterable[float]]:
-    """
-    Higher-order zipwith (or map2).
+    def backward(self, d_output: Optional[float] = None) -> None:
+        if d_output is None:
+            d_output = 1.0
+        backpropagate(self, d_output)
 
-    See https://en.wikipedia.org/wiki/Map_(higher-order_function)
-
-    Args:
-        fn: combine two values
-
-    Returns:
-        Function that takes two equally sized lists `ls1` and `ls2`, produce a new list by
-         applying fn(x, y) on each pair of elements.
-
-    """
-    raise NotImplementedError("Need to include this file from past assignment.")
-
-
-def addLists(ls1: Iterable[float], ls2: Iterable[float]) -> Iterable[float]:
-    "Add the elements of `ls1` and `ls2` using `zipWith` and `add`"
-    raise NotImplementedError("Need to include this file from past assignment.")
-
-
-def reduce(
-    fn: Callable[[float, float], float], start: float
-) -> Callable[[Iterable[float]], float]:
-    r"""
-    Higher-order reduce.
-
-    Args:
-        fn: combine two values
-        start: start value $x_0$
-
-    Returns:
-        Function that takes a list `ls` of elements
-         $x_1 \ldots x_n$ and computes the reduction :math:`fn(x_3, fn(x_2,
-         fn(x_1, x_0)))`
-    """
-    raise NotImplementedError("Need to include this file from past assignment.")
-
-
-def sum(ls: Iterable[float]) -> float:
-    "Sum up a list using `reduce` and `add`."
-    raise NotImplementedError("Need to include this file from past assignment.")
-
-
-def prod(ls: Iterable[float]) -> float:
-    "Product of a list using `reduce` and `mul`."
-    raise NotImplementedError("Need to include this file from past assignment.")
+def derivative_check(f: Any, *scalars: Scalar) -> None:
+    out = f(*scalars)
+    out.backward()
+    err_msg = """
+Derivative check at arguments f(%s) and received derivative f'=%f for argument %d,
+but was expecting derivative f'=%f from central difference."""
+    for i, x in enumerate(scalars):
+        check = central_difference(f, *scalars, arg=i)
+        assert x.derivative is not None
+        np.testing.assert_allclose(
+            x.derivative,
+            check.data,
+            1e-2,
+            1e-2,
+            err_msg=err_msg % (str([x.data for x in scalars]), x.derivative, i, check.data),
+        )
