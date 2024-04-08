@@ -35,7 +35,7 @@ class ScalarFunction:
     """
 
     @classmethod
-    def _backward(cls, ctx: Context, d_out: float) -> Tuple[float, ...]:
+    def _backward(cls, ctx: Context, d_out: float) -> Tuple[float,float]:
         return wrap_tuple(cls.backward(ctx, d_out))
 
     @classmethod
@@ -71,7 +71,7 @@ class Add(ScalarFunction):
         return a + b
 
     @staticmethod
-    def backward(ctx: Context, d_output: float) -> Tuple[float, ...]:
+    def backward(ctx: Context, d_output: float) -> Tuple[float,float]:
         return d_output, d_output
 
 
